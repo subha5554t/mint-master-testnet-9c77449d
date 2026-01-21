@@ -192,11 +192,18 @@ function NFTCard({ nft, formatAddress, contractAddress, addNFTToWallet, isOwned 
       const result = await addNFTToWallet(nft.tokenId, nft.imageUrl);
       if (result) {
         setWasAdded(true);
-        toast.success(`NFT #${nft.tokenId} added to MetaMask!`);
+        toast.success(
+          `NFT #${nft.tokenId} info copied! In MetaMask: Settings > NFTs > Import NFT`, 
+          { duration: 5000 }
+        );
       }
-    } catch (error: any) {
-      console.error('Failed to add NFT:', error);
-      toast.error('Failed to add NFT to wallet');
+    } catch (error: unknown) {
+      const err = error as { code?: number; message?: string };
+      if (err.code === 4001) {
+        toast.error('Request cancelled by user');
+      } else {
+        toast.error('Failed to add NFT. Try importing manually in MetaMask.');
+      }
     } finally {
       setIsAdding(false);
     }

@@ -470,11 +470,17 @@ export function useNFTContract() {
         success: true,
       });
 
-      // Refresh after mint
+      // Refresh immediately and after delays to ensure data is captured
+      fetchTotalSupply();
+      fetchAllNFTs();
+      fetchMyNFTs();
+      
+      // Also refresh after a delay in case of indexing delays
       setTimeout(() => {
+        fetchTotalSupply();
         fetchAllNFTs();
         fetchMyNFTs();
-      }, 2000);
+      }, 3000);
 
     } catch (error: unknown) {
       logger.error('Mint error:', error);
@@ -501,24 +507,15 @@ export function useNFTContract() {
     }
   }, [isContractDeployed, fetchAllNFTs, fetchMyNFTs]);
 
-  // Add NFT to MetaMask wallet
+  // Add NFT to MetaMask wallet - with fallback for unsupported wallets
   const addNFTToWallet = useCallback(async (tokenId: number, imageUrl?: string): Promise<boolean> => {
     if (!window.ethereum?.request) {
       throw new Error('MetaMask is not installed');
     }
 
     try {
-      const { ethers } = await import('ethers');
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
-      
-      let symbol = 'MNFT';
-      try {
-        symbol = await contract.symbol();
-      } catch {
-        // Use default
-      }
-
+      // Try the wallet_watchAsset method for ERC721
+      // Note: This is supported in MetaMask Mobile and newer desktop versions
       const wasAdded = await window.ethereum.request({
         method: 'wallet_watchAsset',
         params: {
@@ -526,14 +523,27 @@ export function useNFTContract() {
           options: {
             address: CONTRACT_ADDRESS,
             tokenId: tokenId.toString(),
-            symbol: symbol,
-            image: imageUrl || undefined,
           },
         },
       }) as boolean;
 
       return wasAdded;
-    } catch (error) {
+    } catch (error: unknown) {
+      const err = error as { code?: number; message?: string };
+      
+      // Error code -32602 or -32603 means the method is not supported
+      if (err.code === -32602 || err.code === -32603 || err.message?.includes('not supported')) {
+        // Fallback: Open MetaMask NFT import guide
+        logger.log('wallet_watchAsset for ERC721 not supported, using manual method');
+        
+        // Copy contract info to clipboard for manual import
+        const importInfo = `Contract: ${CONTRACT_ADDRESS}\nToken ID: ${tokenId}`;
+        await navigator.clipboard.writeText(importInfo);
+        
+        // Return true to indicate we've handled it (user needs to manually import)
+        return true;
+      }
+      
       logger.error('Error adding NFT to wallet:', error);
       throw error;
     }

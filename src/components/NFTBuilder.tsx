@@ -66,11 +66,18 @@ export function NFTBuilder() {
     try {
       const result = await addNFTToWallet(tokenId, formData.imageUrl);
       if (result) {
-        toast.success(`NFT #${tokenId} added to MetaMask!`);
+        toast.success(
+          `NFT #${tokenId} info copied! In MetaMask: Settings > NFTs > Import NFT`,
+          { duration: 5000 }
+        );
       }
-    } catch (error) {
-      console.error('Failed to add NFT:', error);
-      toast.error('Failed to add NFT to wallet');
+    } catch (error: unknown) {
+      const err = error as { code?: number; message?: string };
+      if (err.code === 4001) {
+        toast.error('Request cancelled by user');
+      } else {
+        toast.error('Failed to add NFT. Try importing manually in MetaMask.');
+      }
     } finally {
       setIsAddingToWallet(false);
     }
