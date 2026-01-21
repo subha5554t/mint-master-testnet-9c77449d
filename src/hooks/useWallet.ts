@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import '@/types/ethereum.d';
 
 // Sepolia testnet chain ID
 const SEPOLIA_CHAIN_ID = '0xaa36a7'; // 11155111 in hex
@@ -33,11 +34,11 @@ export function useWallet() {
 
   // Check current connection status
   const checkConnection = useCallback(async () => {
-    if (!isMetaMaskInstalled) return;
+    if (!isMetaMaskInstalled || !window.ethereum?.request) return;
 
     try {
-      const accounts = await window.ethereum.request({ method: 'eth_accounts' });
-      const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+      const accounts = await window.ethereum.request({ method: 'eth_accounts' }) as string[];
+      const chainId = await window.ethereum.request({ method: 'eth_chainId' }) as string;
       const chainIdDecimal = parseInt(chainId, 16);
 
       if (accounts.length > 0) {
@@ -57,7 +58,7 @@ export function useWallet() {
 
   // Connect wallet
   const connectWallet = useCallback(async () => {
-    if (!isMetaMaskInstalled) {
+    if (!isMetaMaskInstalled || !window.ethereum?.request) {
       setState(prev => ({
         ...prev,
         error: 'MetaMask is not installed. Please install MetaMask to continue.',
@@ -70,9 +71,9 @@ export function useWallet() {
     try {
       const accounts = await window.ethereum.request({
         method: 'eth_requestAccounts',
-      });
+      }) as string[];
 
-      const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+      const chainId = await window.ethereum.request({ method: 'eth_chainId' }) as string;
       const chainIdDecimal = parseInt(chainId, 16);
 
       setState({
@@ -83,12 +84,13 @@ export function useWallet() {
         isConnecting: false,
         error: null,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const err = error as { code?: number; message?: string };
       let errorMessage = 'Failed to connect wallet';
       
-      if (error.code === 4001) {
+      if (err.code === 4001) {
         errorMessage = 'Connection rejected. Please approve the connection in MetaMask.';
-      } else if (error.code === -32002) {
+      } else if (err.code === -32002) {
         errorMessage = 'Connection request pending. Please check MetaMask.';
       }
 
@@ -102,16 +104,17 @@ export function useWallet() {
 
   // Switch to Sepolia network
   const switchToSepolia = useCallback(async () => {
-    if (!isMetaMaskInstalled) return;
+    if (!isMetaMaskInstalled || !window.ethereum?.request) return;
 
     try {
       await window.ethereum.request({
         method: 'wallet_switchEthereumChain',
         params: [{ chainId: SEPOLIA_CHAIN_ID }],
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const err = error as { code?: number; message?: string };
       // If the chain hasn't been added, add it
-      if (error.code === 4902) {
+      if (err.code === 4902) {
         try {
           await window.ethereum.request({
             method: 'wallet_addEthereumChain',
@@ -160,7 +163,7 @@ export function useWallet() {
 
   // Listen for account and chain changes
   useEffect(() => {
-    if (!isMetaMaskInstalled) return;
+    if (!isMetaMaskInstalled || !window.ethereum) return;
 
     const handleAccountsChanged = (accounts: string[]) => {
       if (accounts.length === 0) {
@@ -182,15 +185,15 @@ export function useWallet() {
       }));
     };
 
-    window.ethereum.on('accountsChanged', handleAccountsChanged);
-    window.ethereum.on('chainChanged', handleChainChanged);
+    window.ethereum.on?.('accountsChanged', handleAccountsChanged);
+    window.ethereum.on?.('chainChanged', handleChainChanged);
 
     // Check initial connection
     checkConnection();
 
     return () => {
-      window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
-      window.ethereum.removeListener('chainChanged', handleChainChanged);
+      window.ethereum?.removeListener?.('accountsChanged', handleAccountsChanged);
+      window.ethereum?.removeListener?.('chainChanged', handleChainChanged);
     };
   }, [isMetaMaskInstalled, checkConnection, disconnectWallet]);
 
@@ -202,11 +205,4 @@ export function useWallet() {
     switchToSepolia,
     formatAddress,
   };
-}
-
-// Add ethereum type to window
-declare global {
-  interface Window {
-    ethereum: any;
-  }
 }
