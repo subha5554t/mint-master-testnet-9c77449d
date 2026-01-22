@@ -34,6 +34,7 @@ contract MyNFT is ERC721, ERC721URIStorage, ERC721Enumerable, Ownable {
 
     // Mapping to store NFT metadata
     struct NFTMetadata {
+        string uniqueId;      // UUID-style unique identifier
         string name;
         string description;
         string imageUrl;
@@ -42,12 +43,14 @@ contract MyNFT is ERC721, ERC721URIStorage, ERC721Enumerable, Ownable {
     }
     
     mapping(uint256 => NFTMetadata) public nftMetadata;
+    mapping(string => bool) public uniqueIdExists; // Prevent duplicate UUIDs
 
     // ============ Events ============
     
     event NFTMinted(
         address indexed minter,
         uint256 indexed tokenId,
+        string uniqueId,
         string tokenURI,
         string name,
         string description,
@@ -66,7 +69,8 @@ contract MyNFT is ERC721, ERC721URIStorage, ERC721Enumerable, Ownable {
     // ============ Main Functions ============
     
     /**
-     * @dev Mints a new NFT with custom metadata
+     * @dev Mints a new NFT with custom metadata and UUID
+     * @param _uniqueId The UUID-style unique identifier for the NFT
      * @param _tokenURI The metadata URI for the NFT
      * @param _name The name of the NFT
      * @param _description The description of the NFT
@@ -74,19 +78,27 @@ contract MyNFT is ERC721, ERC721URIStorage, ERC721Enumerable, Ownable {
      * @return The token ID of the newly minted NFT
      */
     function mintNFT(
+        string memory _uniqueId,
         string memory _tokenURI,
         string memory _name,
         string memory _description,
         string memory _imageUrl
     ) public returns (uint256) {
+        require(bytes(_uniqueId).length > 0, "Unique ID cannot be empty");
+        require(!uniqueIdExists[_uniqueId], "Unique ID already exists");
+        
         uint256 tokenId = _tokenIdCounter;
         _tokenIdCounter++;
         
         _safeMint(msg.sender, tokenId);
         _setTokenURI(tokenId, _tokenURI);
         
+        // Mark unique ID as used
+        uniqueIdExists[_uniqueId] = true;
+        
         // Store metadata on-chain
         nftMetadata[tokenId] = NFTMetadata({
+            uniqueId: _uniqueId,
             name: _name,
             description: _description,
             imageUrl: _imageUrl,
@@ -94,16 +106,45 @@ contract MyNFT is ERC721, ERC721URIStorage, ERC721Enumerable, Ownable {
             creator: msg.sender
         });
         
-        emit NFTMinted(msg.sender, tokenId, _tokenURI, _name, _description, _imageUrl);
+        emit NFTMinted(msg.sender, tokenId, _uniqueId, _tokenURI, _name, _description, _imageUrl);
         
         return tokenId;
     }
 
     /**
-     * @dev Simple mint function for backwards compatibility
+     * @dev Simple mint function for backwards compatibility (generates UUID on-chain)
      */
     function mintNFTSimple(string memory _tokenURI) public returns (uint256) {
-        return mintNFT(_tokenURI, "Untitled NFT", "No description", "");
+        string memory generatedId = _generateUniqueId(_tokenIdCounter);
+        return mintNFT(generatedId, _tokenURI, "Untitled NFT", "No description", "");
+    }
+    
+    /**
+     * @dev Internal function to generate a unique ID based on token ID and block data
+     */
+    function _generateUniqueId(uint256 tokenId) internal view returns (string memory) {
+        bytes32 hash = keccak256(abi.encodePacked(block.timestamp, block.prevrandao, msg.sender, tokenId));
+        return _bytes32ToHexString(hash);
+    }
+    
+    /**
+     * @dev Converts bytes32 to a hex string (UUID-like format)
+     */
+    function _bytes32ToHexString(bytes32 data) internal pure returns (string memory) {
+        bytes memory hexChars = "0123456789abcdef";
+        bytes memory result = new bytes(36); // 32 hex chars + 4 dashes
+        uint256 resultIndex = 0;
+        
+        for (uint256 i = 0; i < 16; i++) {
+            // Add dashes at positions 8, 12, 16, 20 (after 4, 6, 8, 10 bytes)
+            if (i == 4 || i == 6 || i == 8 || i == 10) {
+                result[resultIndex++] = "-";
+            }
+            result[resultIndex++] = hexChars[uint8(data[i] >> 4)];
+            result[resultIndex++] = hexChars[uint8(data[i] & 0x0f)];
+        }
+        
+        return string(result);
     }
 
     /**
@@ -117,6 +158,7 @@ contract MyNFT is ERC721, ERC721URIStorage, ERC721Enumerable, Ownable {
      * @dev Returns NFT metadata by token ID
      */
     function getNFTMetadata(uint256 tokenId) public view returns (
+        string memory uniqueId,
         string memory name,
         string memory description,
         string memory imageUrl,
@@ -127,6 +169,7 @@ contract MyNFT is ERC721, ERC721URIStorage, ERC721Enumerable, Ownable {
         require(tokenId < _tokenIdCounter, "Token does not exist");
         NFTMetadata memory metadata = nftMetadata[tokenId];
         return (
+            metadata.uniqueId,
             metadata.name,
             metadata.description,
             metadata.imageUrl,
@@ -155,6 +198,7 @@ contract MyNFT is ERC721, ERC721URIStorage, ERC721Enumerable, Ownable {
      */
     function getAllNFTs(uint256 offset, uint256 limit) public view returns (
         uint256[] memory tokenIds,
+        string[] memory uniqueIds,
         string[] memory names,
         string[] memory descriptions,
         string[] memory imageUrls,
@@ -166,6 +210,7 @@ contract MyNFT is ERC721, ERC721URIStorage, ERC721Enumerable, Ownable {
         uint256 count = end > offset ? end - offset : 0;
         
         tokenIds = new uint256[](count);
+        uniqueIds = new string[](count);
         names = new string[](count);
         descriptions = new string[](count);
         imageUrls = new string[](count);
@@ -174,13 +219,14 @@ contract MyNFT is ERC721, ERC721URIStorage, ERC721Enumerable, Ownable {
         for (uint256 i = 0; i < count; i++) {
             uint256 tokenId = offset + i;
             tokenIds[i] = tokenId;
+            uniqueIds[i] = nftMetadata[tokenId].uniqueId;
             names[i] = nftMetadata[tokenId].name;
             descriptions[i] = nftMetadata[tokenId].description;
             imageUrls[i] = nftMetadata[tokenId].imageUrl;
             creators[i] = nftMetadata[tokenId].creator;
         }
         
-        return (tokenIds, names, descriptions, imageUrls, creators);
+        return (tokenIds, uniqueIds, names, descriptions, imageUrls, creators);
     }
 
     // ============ Required Overrides ============
