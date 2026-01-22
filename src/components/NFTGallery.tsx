@@ -245,6 +245,13 @@ function NFTCard({ nft, formatAddress, contractAddress, addNFTToWallet, isOwned 
           {nft.name || 'Untitled'}
         </h3>
         
+        {/* Unique ID */}
+        {nft.uniqueId && (
+          <p className="text-xs text-muted-foreground font-mono truncate mb-2" title={nft.uniqueId}>
+            ID: {nft.uniqueId}
+          </p>
+        )}
+        
         {nft.description && (
           <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
             {nft.description}

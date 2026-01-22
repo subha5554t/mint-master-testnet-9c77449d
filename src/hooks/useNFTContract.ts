@@ -7,9 +7,10 @@ const CONTRACT_ADDRESS = '0x3D5b84b63c7F70717A8fBeFB7A6f4771db1f01cd';
 
 // Extended Contract ABI including ERC721Enumerable standard methods
 const CONTRACT_ABI = [
-  // Mint functions
+  // Mint function with UUID
   {
     "inputs": [
+      { "internalType": "string", "name": "_uniqueId", "type": "string" },
       { "internalType": "string", "name": "_tokenURI", "type": "string" },
       { "internalType": "string", "name": "_name", "type": "string" },
       { "internalType": "string", "name": "_description", "type": "string" },
@@ -32,6 +33,7 @@ const CONTRACT_ABI = [
     "inputs": [{ "internalType": "uint256", "name": "tokenId", "type": "uint256" }],
     "name": "getNFTMetadata",
     "outputs": [
+      { "internalType": "string", "name": "uniqueId", "type": "string" },
       { "internalType": "string", "name": "name", "type": "string" },
       { "internalType": "string", "name": "description", "type": "string" },
       { "internalType": "string", "name": "imageUrl", "type": "string" },
@@ -57,6 +59,7 @@ const CONTRACT_ABI = [
     "name": "getAllNFTs",
     "outputs": [
       { "internalType": "uint256[]", "name": "tokenIds", "type": "uint256[]" },
+      { "internalType": "string[]", "name": "uniqueIds", "type": "string[]" },
       { "internalType": "string[]", "name": "names", "type": "string[]" },
       { "internalType": "string[]", "name": "descriptions", "type": "string[]" },
       { "internalType": "string[]", "name": "imageUrls", "type": "string[]" },
@@ -127,11 +130,12 @@ const CONTRACT_ABI = [
     "stateMutability": "view",
     "type": "function"
   },
-  // Metadata mapping (public)
+  // Metadata mapping (public) - updated with uniqueId
   {
     "inputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
     "name": "nftMetadata",
     "outputs": [
+      { "internalType": "string", "name": "uniqueId", "type": "string" },
       { "internalType": "string", "name": "name", "type": "string" },
       { "internalType": "string", "name": "description", "type": "string" },
       { "internalType": "string", "name": "imageUrl", "type": "string" },
@@ -145,6 +149,7 @@ const CONTRACT_ABI = [
 
 export interface NFTData {
   tokenId: number;
+  uniqueId: string;
   name: string;
   description: string;
   imageUrl: string;
@@ -152,6 +157,15 @@ export interface NFTData {
   creator: string;
   tokenURI: string;
   owner?: string;
+}
+
+// Generate UUID v4
+function generateUUID(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
 }
 
 interface MintState {
@@ -238,6 +252,7 @@ export function useNFTContract() {
         for (let i = 0; i < result.tokenIds.length; i++) {
           nfts.push({
             tokenId: Number(result.tokenIds[i]),
+            uniqueId: result.uniqueIds?.[i] || '',
             name: result.names[i] || 'Untitled',
             description: result.descriptions[i] || '',
             imageUrl: result.imageUrls[i] || '',
@@ -255,6 +270,7 @@ export function useNFTContract() {
               metadata = await contract.getNFTMetadata(i);
               nfts.push({
                 tokenId: i,
+                uniqueId: metadata.uniqueId || '',
                 name: metadata.name || 'Untitled',
                 description: metadata.description || '',
                 imageUrl: metadata.imageUrl || '',
@@ -268,6 +284,7 @@ export function useNFTContract() {
                 const owner = await contract.ownerOf(i);
                 nfts.push({
                   tokenId: i,
+                  uniqueId: metadata.uniqueId || '',
                   name: metadata.name || 'Untitled',
                   description: metadata.description || '',
                   imageUrl: metadata.imageUrl || '',
@@ -281,6 +298,7 @@ export function useNFTContract() {
                   const uri = await contract.tokenURI(i);
                   nfts.push({
                     tokenId: i,
+                    uniqueId: '',
                     name: `NFT #${i}`,
                     description: '',
                     imageUrl: '',
@@ -327,6 +345,7 @@ export function useNFTContract() {
             const metadata = await contract.getNFTMetadata(tokenId);
             nfts.push({
               tokenId: Number(tokenId),
+              uniqueId: metadata.uniqueId || '',
               name: metadata.name || 'Untitled',
               description: metadata.description || '',
               imageUrl: metadata.imageUrl || '',
@@ -340,6 +359,7 @@ export function useNFTContract() {
               const metadata = await contract.nftMetadata(tokenId);
               nfts.push({
                 tokenId: Number(tokenId),
+                uniqueId: metadata.uniqueId || '',
                 name: metadata.name || 'Untitled',
                 description: metadata.description || '',
                 imageUrl: metadata.imageUrl || '',
@@ -364,6 +384,7 @@ export function useNFTContract() {
                 const metadata = await contract.nftMetadata(tokenId);
                 nfts.push({
                   tokenId: Number(tokenId),
+                  uniqueId: metadata.uniqueId || '',
                   name: metadata.name || 'Untitled',
                   description: metadata.description || '',
                   imageUrl: metadata.imageUrl || '',
@@ -376,6 +397,7 @@ export function useNFTContract() {
                 const uri = await contract.tokenURI(tokenId);
                 nfts.push({
                   tokenId: Number(tokenId),
+                  uniqueId: '',
                   name: `NFT #${Number(tokenId)}`,
                   description: '',
                   imageUrl: '',
@@ -434,15 +456,19 @@ export function useNFTContract() {
       const signer = await provider.getSigner();
       const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
 
+      // Generate unique ID for this NFT
+      const uniqueId = generateUUID();
+      
       const finalTokenURI = tokenURI || `data:application/json;base64,${btoa(JSON.stringify({
         name,
         description,
         image: imageUrl,
+        uniqueId,
         attributes: []
       }))}`;
 
-      logger.log('Minting NFT with params:', { finalTokenURI, name, description, imageUrl });
-      const tx = await contract.mintNFT(finalTokenURI, name, description, imageUrl);
+      logger.log('Minting NFT with params:', { uniqueId, finalTokenURI, name, description, imageUrl });
+      const tx = await contract.mintNFT(uniqueId, finalTokenURI, name, description, imageUrl);
       
       setMintState(prev => ({ ...prev, transactionHash: tx.hash }));
       logger.log('Transaction submitted:', tx.hash);
