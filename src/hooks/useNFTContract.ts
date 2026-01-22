@@ -3,7 +3,7 @@ import { logger } from '@/lib/logger';
 import '@/types/ethereum.d';
 
 // Your deployed contract address on Sepolia
-const CONTRACT_ADDRESS = '0x3D5b84b63c7F70717A8fBeFB7A6f4771db1f01cd';
+const CONTRACT_ADDRESS = '0x49fBc12d63d4773Eda158db59b7d7F25992d05Ff';
 
 // Extended Contract ABI including ERC721Enumerable standard methods
 const CONTRACT_ABI = [
